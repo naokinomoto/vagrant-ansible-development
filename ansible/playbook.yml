@@ -1,0 +1,266 @@
+- hosts: all
+  sudo: true
+  user: vagrant
+  vars:
+    packages:
+      - git
+      - emacs
+      - curl
+      - jq
+      - wget
+      - build-essential
+      - bison
+      - libreadline6-dev
+      - git-core
+      - zlib1g-dev
+      - libssl-dev
+      - libyaml-dev
+      - libsqlite3-dev
+      - sqlite3
+      - libxml2-dev
+      - libxslt1-dev
+      - autoconf
+      - libncurses5-dev
+      - unzip
+      - docker
+      - zsh
+      - mercurial
+      - tree
+      - awscli
+      - tmux
+      - tig
+      - ntp
+      - cmigemo
+      - silversearcher-ag
+
+  tasks:
+    # Timezone
+    - name: set timezone
+      lineinfile: >-
+        dest='/etc/timezone'
+        state=present
+        backrefs=yes
+        regexp='^Asia/Tokyo$'
+        line='Asia/Tokyo'
+
+    - name: exec modify timezone
+      shell: dpkg-reconfigure -f noninteractive tzdata
+
+    - name: setting locale
+      shell: locale-gen ja_JP.UTF-8
+
+    - name: update locale
+      shell: /usr/sbin/update-locale LANG=ja_JP.UTF-8
+
+    - name: Run apt-get update
+      apt: update_cache=yes
+
+    # Install Packages
+    - name: install packages
+      apt: pkg={{ item }} update_cache=yes state=latest
+      with_items: packages
+
+    # Create Directories
+    - name: create bin dir
+      file: path=/home/vagrant/bin state=directory mode=0755 owner=vagrant group=vagrant
+
+    - name: create src dir
+      file: path=/home/vagrant/src state=directory mode=0755 owner=vagrant group=vagrant
+
+    # Install Profile Files
+    - name: golang.sh
+      copy: src=./files/golang.sh dest=/etc/profile.d/golang.sh mode=0755
+
+    - name: rbenv.sh
+      copy: src=./files/rbenv.sh dest=/etc/profile.d/rbenv.sh mode=0755
+
+    - name: nvm.sh
+      template: src=./files/nvm.sh dest=/etc/profile.d/nvm.sh mode=0755
+
+    - name: zprofile
+      sudo: false
+      copy: src=./files/zprofile dest=/home/vagrant/.zprofile mode=0755
+
+    # Terraform
+    - name: check terraform exists
+      shell: test -f /usr/local/bin/terraform
+      failed_when: terraform_installed.rc not in [0, 1]
+      register: terraform_installed
+
+    - name: download terraform
+      get_url: url="https://dl.bintray.com/mitchellh/terraform/terraform_0.4.0_linux_amd64.zip" dest=/tmp
+      when: terraform_installed.rc == 1
+
+    - name: install terraform
+      shell: unzip -d /usr/local/bin /tmp/terraform_0.4.0_linux_amd64.zip
+      when: terraform_installed.rc == 1
+
+    # Packer
+    - name: check packer exists
+      shell: test -f /usr/local/bin/packer
+      failed_when: packer_installed.rc not in [0, 1]
+      register: packer_installed
+
+    - name: download packer
+      get_url: url="https://dl.bintray.com/mitchellh/packer/packer_0.7.5_linux_amd64.zip" dest=/tmp
+      when: packer_installed.rc == 1
+
+    - name: install packer
+      shell: unzip -d /usr/local/bin /tmp/packer_0.7.5_linux_amd64.zip
+      when: packer_installed.rc == 1
+
+    # Ruby
+    - name: check rbenv exists
+      shell: test -d /usr/local/rbenv
+      failed_when: rbenv_installed.rc not in [0, 1]
+      register: rbenv_installed
+
+    - name: install rbenv
+      git: repo=git://github.com/sstephenson/rbenv.git dest=/usr/local/rbenv accept_hostkey=yes
+      when: rbenv_installed.rc == 1
+
+    - name: add rbenv to path
+      file: path=/usr/local/bin/rbenv src=/usr/local/rbenv/bin/rbenv state=link force=yes
+
+    - name: check ruby-build exists
+      shell: test -d /usr/local/rbenv/plugins/ruby-build
+      failed_when: rb_installed.rc not in [0, 1]
+      register: rb_installed
+
+    - name: install ruby build
+      git: repo=git://github.com/sstephenson/ruby-build.git dest=/usr/local/rbenv/plugins/ruby-build accept_hostkey=yes
+      when: rb_installed.rc == 1
+
+    - name: check target version exists
+      shell: RBENV_ROOT=/usr/local/rbenv /usr/local/rbenv/bin/rbenv versions | grep 2.1.5 | tr '*' ' ' | sed -e 's/\s\+//' | cut -f1 -d ' '
+      register: ruby_installed
+
+    - name: install ruby
+      shell: RBENV_ROOT=/usr/local/rbenv /usr/local/rbenv/bin/rbenv install 2.1.5 -f
+      when: ruby_installed.stdout != "2.1.5"
+
+    - name: set global ruby
+      shell: RBENV_ROOT=/usr/local/rbenv /usr/local/rbenv/bin/rbenv global 2.1.5
+
+    - name: install bundler
+      shell: RBENV_ROOT=/usr/local/rbenv /usr/local/rbenv/shims/gem install bundler
+
+    - name: rehash rbenv
+      shell: RBENV_ROOT=/usr/local/rbenv /usr/local/rbenv/bin/rbenv rehash
+
+    # Node.js
+    - name: check nvm exists
+      shell: test -d /usr/local/nvm
+      failed_when: nvm_installed.rc not in [0, 1]
+      register: nvm_installed
+
+    - name: Install nvm
+      git: repo=https://github.com/creationix/nvm.git dest=/usr/local/nvm
+      when: nvm_installed.rc == 1
+
+    - name: check target version exists
+      shell: test -d /usr/local/nvm/v0.10.26/
+      failed_when: nodejs_installed.rc not in [0, 1]
+      register: nodejs_installed
+
+    - name: Install node.js
+      shell: bash -lc "source /etc/profile.d/nvm.sh && nvm install v0.10.26"
+      when: nodejs_installed.rc == 1
+
+    - name: Set default node.js
+      shell: bash -lc "source /etc/profile.d/nvm.sh && nvm alias default v0.10.26"
+
+    - name: Install npm modules
+      shell: bash -lc "source /etc/profile.d/nvm.sh && npm install -g grunt-cli gulp"
+
+    # Golang
+    - name: check golang exists
+      shell: test -f /usr/local/go/bin/go
+      failed_when: golang_installed.rc not in [0, 1]
+      register: golang_installed
+
+    - name: download golang
+      get_url: url=https://storage.googleapis.com/golang/go1.4.2.linux-amd64.tar.gz dest=/tmp
+      when: golang_installed.rc == 1
+
+    - name: install golang
+      shell: tar zxvf /tmp/go1.4.2.linux-amd64.tar.gz -C /usr/local
+      when: golang_installed.rc == 1
+
+    - name: check go modules status
+      shell: "export GOPATH=$HOME && /usr/local/go/bin/go list {{ item }}"
+      register: go_module_installed
+      failed_when: go_module_installed.rc not in [0, 1]
+      with_items:
+        - github.com/motemen/ghq
+        - github.com/lestrrat/peco/cmd/peco
+
+    - name: install go modules
+      sudo: false
+      shell: export GOPATH=$HOME && /usr/local/go/bin/go get {{ item.item }}
+      when: item.rc == 1
+      with_items: go_module_installed.results
+
+    # zsh
+    - name: check default shell
+      shell: grep vagrant /etc/passwd
+      register: defaultshell
+
+    - name: change default shell to zsh
+      shell: chsh -s /bin/zsh vagrant
+      when: defaultshell.stdout.find('/bin/zsh') == -1
+
+    # oh-my-zsh
+    - name: check oh-my-zsh
+      shell: test -d /home/vagrant/.oh-my-zsh
+      failed_when: omz_installed.rc not in [0, 1]
+      register: omz_installed
+
+    - name: install oh-my-zsh
+      git: repo=https://github.com/robbyrussell/oh-my-zsh.git dest=/home/vagrant/.oh-my-zsh
+      when: omz_installed.rc == 1
+
+    - name: chown .oh-my-zsh
+      file: path=/home/vagrant/.oh-my-zsh owner=vagrant group=vagrant recurse=yes
+
+    # zsh-git-prompt
+    - name: check zsh-git-prompt
+      shell: test -d /home/vagrant/.zsh-git-prompt
+      failed_when: zgp_installed.rc not in [0, 1]
+      register: zgp_installed
+
+    - name: install zsh-git-prompt
+      git: repo=https://github.com/olivierverdier/zsh-git-prompt.git dest=/home/vagrant/.zsh-git-prompt
+      when: zgp_installed.rc == 1
+
+    - name: chown .zsh-git-prompt
+      file: path=/home/vagrant/.zsh-git-prompt owner=vagrant group=vagrant recurse=yes
+
+    # dotfiles
+    - name: install dotfiles
+      sudo: false
+      git: repo=git://github.com/naokinomoto/dotfiles.git dest=/home/vagrant/dotfiles accept_hostkey=yes
+
+    - name: link dotfiles
+      sudo: false
+      file: src=/home/vagrant/dotfiles/{{ item }} dest=/home/vagrant/{{ item }} state=link force=yes owner=vagrant group=vagrant
+      with_items:
+        - .zshrc
+        - .tmux.conf
+        - .emacs.d
+
+    # Emacs
+    - name: check cask
+      shell: test -d /home/vagrant/.cask
+      failed_when: cask_installed.rc not in [0, 1]
+      register: cask_installed
+
+    - name: install cask
+      sudo: false
+      shell: curl -fsSkL https://raw.github.com/cask/cask/master/go | python
+      when: cask_installed.rc == 1
+
+    - name: install elisps
+      sudo: false
+      shell: cd $HOME/.emacs.d && $HOME/.cask/bin/cask
+
