@@ -9,6 +9,8 @@
       - jq
       - wget
       - build-essential
+      - python-pip
+      - python-dev
       - bison
       - libreadline6-dev
       - git-core
@@ -32,6 +34,11 @@
       - ntp
       - cmigemo
       - silversearcher-ag
+      - w3m
+      - markdown
+    python_modules:
+      - ansible
+      - grip
 
   tasks:
     # Timezone
@@ -59,6 +66,10 @@
     - name: install packages
       apt: pkg={{ item }} update_cache=yes state=latest
       with_items: packages
+
+    - name: Intall Python Modules
+      pip: name={{ item }} state=latest
+      with_items: python_modules
 
     # Create Directories
     - name: create bin dir
