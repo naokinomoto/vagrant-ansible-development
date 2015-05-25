@@ -24,7 +24,6 @@
       - autoconf
       - libncurses5-dev
       - unzip
-      - docker
       - zsh
       - mercurial
       - tree
@@ -91,6 +90,10 @@
     - name: zprofile
       sudo: false
       copy: src=./files/zprofile dest=/home/vagrant/.zprofile mode=0755
+
+    # Docker
+    - name: Install Docker
+      shell: wget -qO- https://get.docker.com/ | sh
 
     # Terraform
     - name: check terraform exists
